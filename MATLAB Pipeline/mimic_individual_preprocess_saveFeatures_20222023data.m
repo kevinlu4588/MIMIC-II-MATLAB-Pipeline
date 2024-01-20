@@ -60,71 +60,12 @@ fsh = 125; %
 ECG = ECG;
 Finapres = Finapres;
 NIRS = NIRS;
-
-%% Assign data variables and take the valid time segments only for further analysis
-%
-% The above loaded .mat file contains the following variables (same as tho
-% 1) DataACC, 2) DataACCConv, 3) DataAUX, 4) DataBKG, 5) DataECG, 6) DataESTG, 7) DataFrc,
-% 8) DataHRB0, 9) DataHRS0, 10) DataNrm, 11) DataSRC, 12) DataTemp, 13)
-% DataTempConv and 14) tVecEstG. 
-%
-% What we are most interested are ECG, STAT, Finapress and NIRS data, as
-% well as we will also output DataACCConv and DataTempConv, and tVecEstG
-% which will rename as SOPTimeVec to our output .mat file for preprocessed
-% data.
-%
-% To utilize the majority of the code that is inherited from
-% preprocess_saveFeatures_20172018data.m, we assign the corresponding
-% variables loaded from the above mentioned .mat files to the corresponding 
-% variable names in the following code that we will be processing data for
-% them.
-%
-% DataECG is the channel 1 of DataAUX, DataFinapress is the channel 2 of
-% DataAUX, STAT channels are the channels 5~8 of DataAUX, and 
-% NIRS is DataHRS0'-DataHRB0'
-
-
-
-%STA_allChannels = double(DataAUX(5:8, sectionStartInd:sectionEndInd))';
-%No STAT channel in MIMIC-II data
-
-%DataACCConv = DataACCConv(sectionStartInd:sectionEndInd,:); % DataACCConv was already in rowsx3 format, so sectionStartInd:sectionEndInd is in 1st dimension
 %% Preprocess ECG signals 
 % noise not present in the MIMIC-II dataset
 % load('60Hz_norch_FIR_for_250.mat') % load in notch filter parameters for removing 60Hz power line interference noise
 % ECG = filtfilt(Num,1,ECG); % notch filtering to remove 60Hz power line interference noise
 %                            % 'Num' is the filter coefficients variable that
 %                            % is loaded from '60Hz_norch_FIR_for_250.mat'
-% disp("ECG" + ECG(1:10));
-% disp("Finapress" + Finapres(1:10));
-% disp("Nirs(PPG)?: " + NIRS(1:10));
-% 
-% % Create a time vector (you can replace this with your actual time values)
-% time = 1:100;
-% 
-% % Create separate subplots for each dataset
-% figure;
-% 
-% % Subplot 1 for PPG data
-% subplot(3, 1, 1);
-% plot(NIRS(1:1000), 'b', 'LineWidth', 2);
-% title('PPG Data');
-% xlabel('Time');
-% ylabel('Data Value');
-% 
-% % Subplot 2 for BP data
-% subplot(3, 1, 2);
-% plot(Finapres(1:1000), 'g', 'LineWidth', 2);
-% title('BP Data');
-% xlabel('Time');
-% ylabel('Data Value');
-% 
-% % Subplot 3 for ECG data
-% subplot(3, 1, 3);
-% plot(ECG(1:1000), 'r', 'LineWidth', 2);
-% title('ECG Data');
-% xlabel('Time');
-% ylabel('Data Value');
 %% Detect ECG signal QRS peaks by method 1 and calculate heart rate (HR)
 % Define parameters for QRS detection
 % HR from ECG
@@ -257,110 +198,9 @@ SQIinterp = interp1(sqitVecSecond4interp, SQI4interp, sqitVecSecond)';
 ECGSQIinterp = SQIinterp; 
 
 %{ 
-%% (MIMIC Contains no STAT) STAT signal preprocessing
-fprintf('\nPreprocessSTAT and calcSTATSQI...\n');
-
-% 1) Perform low-pass filtering, 2) detect beats and 3) calculate SQI for all STAT channels, 
-% and 4) select the best STAT channel based on best channel average SQI value,
-% so that later on we will focus on processing this best quality STAT channel only
-[SQISTATs, beats_stats, statdata_all_channels, best_stat_channel_data, best_stat_channel_idx, best_channel_avgSQI, stat_reversed_ornot_allchannels] ...
-                      = preprocessSTAT_calcSTATSQI(STA_allChannels, fsh);
-
-STAT = statdata_all_channels; 
-
-STA = best_stat_channel_data;
-
-% Preprocess STAT signal, with the following major functionalities (see findsysdias0_qppg.m for details):
-% a) Find STAT diastolic blood pressure and systolic blood pressure envelopes, 
-% b) Calculate Finapress Signal Quality Index (SQI),  c) detect beats down and
-% up locations and values on the STAT signals, as well as d) remove beats if SQI <
-% sqi_th (50 here), and e) interpret to get back to original signal length
-% after low quality beats removal and f) apply low pass fitering to the
-% interpreted signal
-
-% [STAsbp, STAdbp]=nabpDiaSys_by_qppg(STA,fsh);
-% [STAdbp,STAsbp]=findsysdias0(STA);
-[STAdbp,STAsbp,STASQI,beat_down,beat_up,beat_down_value,beat_up_value] = findsysdias0_qppg(STA,fsh,median(HR),50);
-
-% Interpret STAT SQI to have same length of ECG (x axis, and in second
-% unit in x axis, while y axis will the STAT SQI values)
-staSQItVecSecond = ((1:length(ECG))-1)/fsh; % convert to second unit, to have the same length as that of the ECG,
-                                            % which the same as that of the STA, STAdbp, and STAsbp too
-
-staTtVecSecond4interp = [0; (beat_up/fsh)'; staSQItVecSecond(end)]; 
-STASQIinterp4interp = [STASQI(1);STASQI;STASQI(end)];
-
-% "interp1" requires the values of "x" to be distinct, so get unique values of sqitVecSecond4interp
-[~, ind2] = unique(staTtVecSecond4interp);
-staTtVecSecond4interp = staTtVecSecond4interp(ind2);
-STASQI4interp = STASQIinterp4interp(ind2);
-STASQIinterp = interp1(staTtVecSecond4interp, STASQI4interp, staSQItVecSecond)';
-
-%% Calibrate STAT with Finapress BP by the beginning values of Finapress BP
-calBP_x = [mean(STAdbp(1:fsh*3)) mean(STAsbp(1:fsh*3))];
-calBP_y = [mean(FindbpSec(1:fsh*3)) mean(FinsbpSec(1:fsh*3))];
-[p, s] = polyfit(calBP_x, calBP_y, 1); % find calibration parameters by polynomial fitting between STAT and Finapress beginning values
-
-% Apply calibration to STAT data
-STAcal = STA*p(1)+p(2);
-STAsbpcal = STAsbp*p(1)+p(2);
-STAdbpcal = STAdbp*p(1)+p(2);
-STAmbpcal = (STAsbp+2*STAdbp)/3;
-%} 
+%% (MIMIC Contains no STAT)
 
 %% NIRS preprocessing
-% % Best NIRS channel
-% NIRS1 = NIRS(:,4);                   % Visually checking the DataHRS0 and DataHRB0 of the 09_30_2022\2022-0930-124929-10401.nin
-%                                              % found out that channels 4, 5,6 and 7 are with relatively good qualities,
-%                                              % and with their channels values in the  DataHRS0 greater than their
-%                                              % corresonding of DataHRB0, while other channels with
-%                                              % noisy signal or/and their corresponding DataHRB0 greater than DataHRS0 (which should not be theoretically,
-%                                              % as dark/background values should be smaller than those when the light source was turned on, 
-%                                              % as dark/background was collected when light source was turned off)
-%                                              %
-%                                              % Visually checking further found channel 4 was with the best signal quality and small/correct dark/background values, 
-%                                              % (looks for me, channel 6 was good too, and channel 7 was ok as well) 
-%                                              % so use the 4th channel of NIRS for later PTT features calculation, 
-%                                              % and use variable name of 'NIRS1' is to consistent with that used in the read_data_for_deep_learning.m
-%                                              % for the convenience of code comparing with it, and to cite its feature calculation part of code (later below) 
-%                                              % conveniently as well.
-%                                              %
-%                                              % TODO: discuss with team on
-%                                              % which NIRS channel to use
-%                                              % for PTT features calculation
-%                                              % YY
-% 
-% % Apply lowpass filtering to NIRS signal
-% [b, a] = butter(3, 10/(fsh/2));
-% NIRS1 = filtfilt(b,a,NIRS1); % Apply lowpass filtering on the best NIRS channel
-% NIRS = filtfilt(b,a,NIRS); % Apply lowpass filtering on all NIRS channels
-% 
-% 
-% % Convert (the good NIRS channel's) NIRS signal to optical density
-% % (OD) unit. NIRS1 and its corresponding optical density (OD)
-% % data (optData below) have been used for later PTT features calculation by
-% % different PTT calculation algorithms in this function (see section
-% % "Calculate PTT features by different algorithms" below in this function)
-% if min(NIRS1)<10
-%     NIRS1 = NIRS1-min(NIRS1)+10;
-% end
-% 
-% normBase = median(NIRS1(1000:2000,:));
-% 
-% dataLength = length(NIRS1);
-% optData = log(ones(dataLength,1)*normBase./NIRS1);
-% NIRS1_OD = optData; % use this name of NIRS1_OD for variable name self-explanatory (NIRS1 optical density for later this feature saving)
-
-%potential just apply
-% if min(NIRS) < 10
-%    NIRS = NIRS-min(NIRS) + 10;
-% end
-% 
-% normBase = median(ppg(1000:min(20000,length(ppgFil))));
-% dataLength = length(NIRS)
-% optData = log(ones(dataLength,1)*normBase./NIRS);
-% NIRS_OD = optData;
-% fprintf('\nPreprocessNIRS and calcNIRSSQI...\n');
 % 
  [SQINIRSs, beats_NIRSs, nirsdata_all_channels, nirsdata_OD_all_channels, ...
            best_nirs_channel_data, best_nirs_OD_channel_data, best_nirs_channel_idx, best_nirs_channel_avgSQI] ...
