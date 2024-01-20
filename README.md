@@ -1,4 +1,4 @@
-# MIMIC-II-EDA
+# MIMIC-II-MATLAB-Pipeline
 
 Exploratory Data Analysis of MIMIC-II dataset
 
