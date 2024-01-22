@@ -48,14 +48,6 @@ function [preprocessDataMatFileFullPath, Xdata, Ydata] = mimic_individual_prepro
 % Kevin Lu November 21st
 % 3) Sample must have > 4000 samples, but edited 
 
-
-
-% %% Set default value for variable of 'segmentTimeSeconds'
-% if nargin < 4
-%       segmentTimeSeconds = 4; % default is to segment as 4 seconds of data segments (for the data segementation functionality)
-% end
-
-
 fsh = 125; %  
 ECG = ECG;
 Finapres = Finapres;
@@ -197,7 +189,6 @@ SQI4interp = SQI4interp(ind);
 SQIinterp = interp1(sqitVecSecond4interp, SQI4interp, sqitVecSecond)';
 ECGSQIinterp = SQIinterp; 
 
-%{ 
 %% (MIMIC Contains no STAT)
 
 %% NIRS preprocessing
